@@ -1,0 +1,79 @@
+name: atlas-04-enterprise
+
+topology:
+  defaults:
+    kind: linux
+    image: atlaslab/frr:latest
+    cap-add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_ADMIN
+    sysctls:
+      net.ipv4.ip_forward: 1
+      net.ipv4.conf.all.rp_filter: 0
+      net.ipv4.conf.default.rp_filter: 0
+
+  nodes:
+    isp1:
+      binds:
+        - ../../configs/04-enterprise/isp1/daemons:/etc/frr/daemons
+        - ../../configs/04-enterprise/isp1/frr.conf:/etc/frr/frr.conf
+        - ../../configs/04-enterprise/isp1/vtysh.conf:/etc/frr/vtysh.conf
+    edge1:
+      binds:
+        - ../../configs/04-enterprise/edge1/daemons:/etc/frr/daemons
+        - ../../configs/04-enterprise/edge1/frr.conf:/etc/frr/frr.conf
+        - ../../configs/04-enterprise/edge1/vtysh.conf:/etc/frr/vtysh.conf
+    edge2:
+      binds:
+        - ../../configs/04-enterprise/edge2/daemons:/etc/frr/daemons
+        - ../../configs/04-enterprise/edge2/frr.conf:/etc/frr/frr.conf
+        - ../../configs/04-enterprise/edge2/vtysh.conf:/etc/frr/vtysh.conf
+    core1:
+      binds:
+        - ../../configs/04-enterprise/core1/daemons:/etc/frr/daemons
+        - ../../configs/04-enterprise/core1/frr.conf:/etc/frr/frr.conf
+        - ../../configs/04-enterprise/core1/vtysh.conf:/etc/frr/vtysh.conf
+    core2:
+      binds:
+        - ../../configs/04-enterprise/core2/daemons:/etc/frr/daemons
+        - ../../configs/04-enterprise/core2/frr.conf:/etc/frr/frr.conf
+        - ../../configs/04-enterprise/core2/vtysh.conf:/etc/frr/vtysh.conf
+    dist1:
+      binds:
+        - ../../configs/04-enterprise/dist1/daemons:/etc/frr/daemons
+        - ../../configs/04-enterprise/dist1/frr.conf:/etc/frr/frr.conf
+        - ../../configs/04-enterprise/dist1/vtysh.conf:/etc/frr/vtysh.conf
+    dist2:
+      binds:
+        - ../../configs/04-enterprise/dist2/daemons:/etc/frr/daemons
+        - ../../configs/04-enterprise/dist2/frr.conf:/etc/frr/frr.conf
+        - ../../configs/04-enterprise/dist2/vtysh.conf:/etc/frr/vtysh.conf
+    access1:
+      binds:
+        - ../../configs/04-enterprise/access1/daemons:/etc/frr/daemons
+        - ../../configs/04-enterprise/access1/frr.conf:/etc/frr/frr.conf
+        - ../../configs/04-enterprise/access1/vtysh.conf:/etc/frr/vtysh.conf
+    access2:
+      binds:
+        - ../../configs/04-enterprise/access2/daemons:/etc/frr/daemons
+        - ../../configs/04-enterprise/access2/frr.conf:/etc/frr/frr.conf
+        - ../../configs/04-enterprise/access2/vtysh.conf:/etc/frr/vtysh.conf
+
+  links:
+    - endpoints: ["isp1:eth1", "edge1:eth1"]
+    - endpoints: ["isp1:eth2", "edge2:eth1"]
+    - endpoints: ["edge1:eth2", "edge2:eth2"]
+    - endpoints: ["edge1:eth3", "core1:eth1"]
+    - endpoints: ["edge1:eth4", "core2:eth1"]
+    - endpoints: ["edge2:eth3", "core1:eth2"]
+    - endpoints: ["edge2:eth4", "core2:eth2"]
+    - endpoints: ["core1:eth3", "core2:eth3"]
+    - endpoints: ["core1:eth4", "dist1:eth1"]
+    - endpoints: ["core2:eth4", "dist1:eth2"]
+    - endpoints: ["core1:eth5", "dist2:eth1"]
+    - endpoints: ["core2:eth5", "dist2:eth2"]
+    - endpoints: ["dist1:eth3", "access1:eth1"]
+    - endpoints: ["dist2:eth3", "access1:eth2"]
+    - endpoints: ["dist1:eth4", "access2:eth1"]
+    - endpoints: ["dist2:eth4", "access2:eth2"]

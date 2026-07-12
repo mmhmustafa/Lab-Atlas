@@ -1,0 +1,38 @@
+# AtlasLab - labs/06-atlas-demo/expected-unreachable.txt
+#
+# Loopback pairs that are UNREACHABLE BY DESIGN, not by bug. Read by
+# scripts/test-connectivity.sh: a failed ping between a pair listed here
+# is reported as an expected policy result, not a regression.
+#
+# Format: "<src-node> <dst-node>" (one direction per line).
+#
+# Why these are unreachable:
+#   isp1 <-> isp2
+#     Atlas is dual-homed to two independent upstream providers. There is
+#     no link and no route between the ISPs themselves - Atlas does not
+#     provide transit between them. See docs/routing.md.
+#   isp1/isp2 <-> branch1-4
+#     Branch site loopbacks/LANs (10.255.1.0/24, 172.16.100.0/22) are
+#     deliberately excluded from RM-TO-ISP (the edge1/edge2 route-map
+#     that filters what gets advertised to the ISPs), so branch sites
+#     stay private WAN-only and are never leaked to the internet. See
+#     inventory/devices.yaml and docs/routing.md.
+
+isp1 isp2
+isp2 isp1
+isp1 branch1
+isp1 branch2
+isp1 branch3
+isp1 branch4
+isp2 branch1
+isp2 branch2
+isp2 branch3
+isp2 branch4
+branch1 isp1
+branch1 isp2
+branch2 isp1
+branch2 isp2
+branch3 isp1
+branch3 isp2
+branch4 isp1
+branch4 isp2

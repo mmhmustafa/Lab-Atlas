@@ -1,0 +1,43 @@
+name: atlas-02-ospf
+
+topology:
+  defaults:
+    kind: linux
+    image: atlaslab/frr:latest
+    cap-add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_ADMIN
+    sysctls:
+      net.ipv4.ip_forward: 1
+      net.ipv4.conf.all.rp_filter: 0
+      net.ipv4.conf.default.rp_filter: 0
+
+  nodes:
+    r1:
+      binds:
+        - ../../configs/02-ospf/r1/daemons:/etc/frr/daemons
+        - ../../configs/02-ospf/r1/frr.conf:/etc/frr/frr.conf
+        - ../../configs/02-ospf/r1/vtysh.conf:/etc/frr/vtysh.conf
+    r2:
+      binds:
+        - ../../configs/02-ospf/r2/daemons:/etc/frr/daemons
+        - ../../configs/02-ospf/r2/frr.conf:/etc/frr/frr.conf
+        - ../../configs/02-ospf/r2/vtysh.conf:/etc/frr/vtysh.conf
+    r3:
+      binds:
+        - ../../configs/02-ospf/r3/daemons:/etc/frr/daemons
+        - ../../configs/02-ospf/r3/frr.conf:/etc/frr/frr.conf
+        - ../../configs/02-ospf/r3/vtysh.conf:/etc/frr/vtysh.conf
+    r4:
+      binds:
+        - ../../configs/02-ospf/r4/daemons:/etc/frr/daemons
+        - ../../configs/02-ospf/r4/frr.conf:/etc/frr/frr.conf
+        - ../../configs/02-ospf/r4/vtysh.conf:/etc/frr/vtysh.conf
+
+  links:
+    - endpoints: ["r1:eth1", "r2:eth1"]
+    - endpoints: ["r2:eth2", "r3:eth1"]
+    - endpoints: ["r3:eth2", "r4:eth1"]
+    - endpoints: ["r4:eth2", "r1:eth2"]
+    - endpoints: ["r1:eth3", "r3:eth3"]
