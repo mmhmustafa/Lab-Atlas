@@ -4,7 +4,9 @@
 # Regression smoke test for a deployed lab:
 #   1. OSPF adjacencies are Full on every node running ospfd
 #   2. BGP sessions are Established on every node running bgpd
-#   3. Full-mesh loopback-to-loopback ping across all nodes
+#   3. Every node accepts an SSH login as the documented "atlas"
+#      management user and runs a vtysh command
+#   4. Full-mesh loopback-to-loopback ping across all nodes
 #
 # Works for any lab under labs/ - it discovers nodes from the topology
 # file and which daemons are enabled from configs/<lab>/<node>/daemons,
@@ -117,7 +119,57 @@ while IFS= read -r node; do
   fi
 done <<<"$NODES"
 
-# --- 3. Full-mesh loopback reachability -------------------------------------
+# --- 3. SSH management access -----------------------------------------------
+log_step "SSH management access check"
+
+MGMT_IPS="$(lab_mgmt_ips "$LAB")"
+if [[ -z "$MGMT_IPS" ]]; then
+  fail "SSH: no management IPs found (is the lab deployed?)"
+else
+  SSH_LOG="$(mktemp)"
+  # Command + expected-output check is role-aware: FRR nodes (daemons
+  # file present) log into vtysh itself (see docker/frr-atlaslab) and
+  # "show version" is the universal vtysh smoke test; non-FRR nodes
+  # (atlaslab/firewall, atlaslab/switch - plain /bin/sh login) get a
+  # trivial shell command instead, since "show version" would just be
+  # an invalid command in a POSIX shell.
+  echo "$MGMT_IPS" | xargs -P 8 -L 1 bash -c '
+    node="$0"; ip="$1"
+    if [[ -f "'"$CONFIGS_DIR"'/${node}/daemons" ]]; then
+      cmd="show version"; want="FRRouting"
+    else
+      cmd="echo ATLASLAB_SSH_OK"; want="ATLASLAB_SSH_OK"
+    fi
+    out="$(SSH_ASKPASS="'"$ATLASLAB_SSH_ASKPASS"'" SSH_ASKPASS_REQUIRE=force \
+      setsid ssh -o StrictHostKeyChecking=no \
+                 -o UserKnownHostsFile=/dev/null \
+                 -o LogLevel=ERROR \
+                 -o PreferredAuthentications=password \
+                 -o PubkeyAuthentication=no \
+                 -o ConnectTimeout=5 \
+                 -o BatchMode=no \
+                 "'"$ATLASLAB_SSH_USER"'@${ip}" "$cmd" </dev/null 2>&1)"
+    if grep -q "$want" <<<"$out"; then
+      echo "OK ${node} (${ip})"
+    else
+      echo "FAIL ${node} (${ip}): ${out}"
+    fi
+  ' >"$SSH_LOG" 2>&1
+
+  ssh_total="$(wc -l <"$SSH_LOG" | tr -d ' ')"
+  ssh_ok="$(grep -c '^OK' "$SSH_LOG" || true)"
+  ssh_fail="$(grep -c '^FAIL' "$SSH_LOG" || true)"
+
+  if [[ "$ssh_fail" -eq 0 && "$ssh_total" -gt 0 ]]; then
+    pass "SSH: ${ssh_ok}/${ssh_total} nodes accepted a password-authenticated login as '${ATLASLAB_SSH_USER}' and ran a command"
+  else
+    fail "SSH: ${ssh_fail}/${ssh_total} nodes FAILED SSH login/command"
+    grep '^FAIL' "$SSH_LOG" | sed 's/^/    /' | tee -a "${LOG_FILE}"
+  fi
+  rm -f "$SSH_LOG"
+fi
+
+# --- 4. Full-mesh loopback reachability -------------------------------------
 log_step "Loopback-to-loopback reachability (full mesh)"
 
 declare -A LOOPBACK

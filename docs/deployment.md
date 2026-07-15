@@ -6,9 +6,13 @@ Already present in this environment (see the repo's setup notes) and
 not touched by anything here: WSL2 + Ubuntu, Docker Engine, Containerlab
 0.77. Run `make verify` (`scripts/verify-environment.sh`) before first
 use - it checks all of the above plus Python 3 with PyYAML and Jinja2
-(used by `scripts/generate-configs.py`), and builds the `atlaslab/frr`
-image (frrouting/frr + lldpd, see [docs/atlas-integration.md](atlas-integration.md))
-on first run if it isn't present locally.
+(used by `scripts/generate-configs.py`), `ssh`/`setsid` (used by the SSH
+verification helpers), and (re)builds the `atlaslab/frr` image
+(frrouting/frr + lldpd + sshd + the documented `atlas` management user,
+see [docs/atlas-integration.md](atlas-integration.md)) every run -
+Docker's own layer cache makes a no-op rebuild fast, and always
+rebuilding is what catches a stale image after a Dockerfile change
+instead of silently reusing one built before it.
 
 Containerlab needs to run as a user who can talk to the Docker socket
 without `sudo` - this environment's WSL user is already in the `docker`
@@ -50,6 +54,33 @@ hasn't already been satisfied by an existing DR/BDR. In practice:
 `scripts/test-connectivity.sh` doesn't hide this - if you run it too
 early, you'll see real (temporary) OSPF/BGP failures, not a bug. Just
 wait and re-run.
+
+## SSH management access
+
+Every node runs `sshd`, reachable over its containerlab management IP
+(the same address `containerlab inspect` / `make inspect` shows):
+
+```bash
+make inspect LAB=04-enterprise           # lists every node's mgmt IP
+ssh atlas@<mgmt-ip>                      # password: AtlasLab123!
+```
+
+The `atlas` account's login shell is `vtysh` itself, so this drops
+straight into the FRR CLI - `ssh atlas@<mgmt-ip> "show ip ospf
+neighbor"` works as a one-shot command too. Host keys are generated
+fresh per container at startup (not baked into the image, so every
+node gets its own), which means a new key every redeploy; connect with
+`-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null` rather
+than fighting `~/.ssh/known_hosts` churn on a lab that gets torn down
+and rebuilt constantly. See
+[docs/atlas-integration.md](atlas-integration.md#optional-services) for
+the full credential/design rationale, and
+[docs/troubleshooting.md](troubleshooting.md) for the bugs hit (and
+fixed) building this.
+
+`make verify` builds `atlaslab/frr` and checks it has `sshd` + the
+`atlas` account; `make test` SSH-logs into every deployed node as part
+of the regression suite.
 
 ## Inspecting a running lab
 

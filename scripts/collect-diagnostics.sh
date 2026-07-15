@@ -34,6 +34,9 @@ Writes:
     <node>/bgp-summary.txt
     <node>/ip-route.txt
     <node>/interfaces.txt
+    <node>/lldp-neighbors.txt
+    <node>/frr.log
+    <node>/ssh-status.txt
     <node>/docker-logs.txt
   logs/diagnostics-<lab>-<timestamp>.tar.gz
 
@@ -68,6 +71,14 @@ pushd "$LAB_DIR" >/dev/null
 popd >/dev/null
 
 NODES="$(node_list "$LAB")"
+
+declare -A MGMT_IP
+while IFS= read -r line; do
+  [[ -z "$line" ]] && continue
+  set -- $line
+  MGMT_IP["$1"]="$2"
+done < <(lab_mgmt_ips "$LAB")
+
 NODE_COUNT=0
 while IFS= read -r node; do
   [[ -z "$node" ]] && continue
@@ -85,6 +96,19 @@ while IFS= read -r node; do
     docker exec "$cname" sh -c 'lldpcli show neighbors 2>/dev/null' >"${node_dir}/lldp-neighbors.txt" 2>&1 || true
     docker exec "$cname" cat /var/log/frr/frr.log >"${node_dir}/frr.log" 2>&1 || true
     docker logs "$cname" >"${node_dir}/docker-logs.txt" 2>&1 || true
+
+    {
+      echo "sshd process (inside container):"
+      docker exec "$cname" pgrep -a sshd 2>&1 || echo "  not running"
+      echo
+      ip="${MGMT_IP[$node]:-}"
+      if [[ -n "$ip" ]]; then
+        echo "SSH login test: ${ATLASLAB_SSH_USER}@${ip}"
+        ssh_atlas_run "$ip" "show version" 2>&1 | head -5
+      else
+        echo "SSH login test: skipped, no management IP found for '${node}'"
+      fi
+    } >"${node_dir}/ssh-status.txt" 2>&1 || true
   else
     echo "container ${cname} not running" >"${node_dir}/NOT_RUNNING.txt"
   fi

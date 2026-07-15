@@ -2,8 +2,9 @@
 # AtlasLab - scripts/verify-environment.sh
 #
 # Checks that the local host is ready to deploy AtlasLab topologies:
-# Docker daemon reachable, containerlab installed, the frrouting/frr
-# image present, Python3 + PyYAML/Jinja2 for the config generator, and
+# Docker daemon reachable, containerlab installed, the atlaslab/frr
+# image built with SSH management support, Python3 + PyYAML/Jinja2 for
+# the config generator, ssh/setsid for the SSH verification helpers, and
 # that the current user can run docker/containerlab without sudo.
 #
 # Usage:
@@ -30,8 +31,12 @@ Checks performed:
   - current user can run docker without sudo
   - containerlab CLI present, and its version
   - frrouting/frr:latest image present locally (pulls it if missing)
-  - python3 present with pyyaml + jinja2 (used by scripts/generate-configs.py)
-  - required core utilities: git, ping, sudo, tar
+  - atlaslab/frr:latest built fresh (frrouting/frr + lldpd + sshd + the
+    documented "atlas" management user) and sanity-checked
+  - atlaslab/firewall:latest and atlaslab/switch:latest built fresh
+    (used by labs/07-multi-city)
+  - python3 present with pyyaml + jinja2 (used by the config generators)
+  - required core utilities: git, ping, tar, ssh, setsid
   - repository directory structure present
 
 Exit codes:
@@ -109,16 +114,49 @@ if command -v docker >/dev/null 2>&1 && docker info >/dev/null 2>&1; then
     fi
   fi
 
-  if docker image inspect atlaslab/frr:latest >/dev/null 2>&1; then
-    check "atlaslab/frr:latest image present" 0
+  # Always (re)build rather than only building when absent: Docker's own
+  # layer cache makes a no-op rebuild near-instant, and this is the only
+  # way to guarantee a stale image (e.g. one built before SSH support was
+  # added to the Dockerfile) gets refreshed instead of silently reused.
+  log_info "Building atlaslab/frr:latest (frrouting/frr + lldpd + SSH management access)..."
+  if timeout 180 docker build -t atlaslab/frr:latest "${ATLASLAB_ROOT}/docker/frr-atlaslab" >>"${LOG_FILE}" 2>&1; then
+    check "atlaslab/frr:latest image built" 0
   else
-    log_warn "atlaslab/frr:latest not found locally, building it (adds lldpd to frrouting/frr)..."
-    if docker build -t atlaslab/frr:latest "${ATLASLAB_ROOT}/docker/frr-atlaslab" >>"${LOG_FILE}" 2>&1; then
-      check "atlaslab/frr:latest image present" 0 "built"
+    check "atlaslab/frr:latest image built" 1 "build failed - see ${LOG_FILE}"
+  fi
+
+  if docker image inspect atlaslab/frr:latest >/dev/null 2>&1; then
+    # --entrypoint sh is required: the image's own ENTRYPOINT is
+    # tini -> atlaslab-entrypoint.sh, which ignores any trailing CMD
+    # args and unconditionally execs into the full FRR startup sequence
+    # (a process that runs forever). Without overriding it, "docker run
+    # ... sh -c ..." silently starts a full, permanent router container
+    # instead of running this one-off check and exiting - it did exactly
+    # that during development and hung this script for over an hour.
+    # timeout is a second, independent guard against exactly that class
+    # of mistake recurring.
+    ssh_image_check="$(timeout 20 docker run --rm --entrypoint sh atlaslab/frr:latest -c \
+      "id -nG ${ATLASLAB_SSH_USER} 2>/dev/null | grep -qw frr && id -nG ${ATLASLAB_SSH_USER} 2>/dev/null | grep -qw frrvty && command -v sshd >/dev/null && echo OK" \
+      2>>"${LOG_FILE}" || true)"
+    if [[ "$ssh_image_check" == "OK" ]]; then
+      check "atlaslab/frr:latest has sshd + '${ATLASLAB_SSH_USER}' user (frr+frrvty groups)" 0
     else
-      check "atlaslab/frr:latest image present" 1 "build failed - see ${LOG_FILE}"
+      check "atlaslab/frr:latest has sshd + '${ATLASLAB_SSH_USER}' user (frr+frrvty groups)" 1 "see ${LOG_FILE}"
     fi
   fi
+
+  # atlaslab/firewall and atlaslab/switch - only labs/07-multi-city uses
+  # these, but building them here (same always-rebuild rationale as
+  # atlaslab/frr above) means `make deploy LAB=07-multi-city` never hits
+  # a missing-image error on first use.
+  for img_name in firewall switch; do
+    log_info "Building atlaslab/${img_name}:latest..."
+    if timeout 120 docker build -t "atlaslab/${img_name}:latest" "${ATLASLAB_ROOT}/docker/${img_name}-atlaslab" >>"${LOG_FILE}" 2>&1; then
+      check "atlaslab/${img_name}:latest image built" 0
+    else
+      check "atlaslab/${img_name}:latest image built" 1 "build failed - see ${LOG_FILE}"
+    fi
+  done
 fi
 
 # --- python3 + generator deps --------------------------------------------
@@ -135,7 +173,7 @@ else
 fi
 
 # --- core utilities --------------------------------------------------------
-for tool in git ping tar; do
+for tool in git ping tar ssh setsid; do
   if command -v "$tool" >/dev/null 2>&1; then
     check "'${tool}' available" 0
   else

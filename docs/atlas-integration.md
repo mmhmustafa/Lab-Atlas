@@ -16,6 +16,9 @@ configured and why.
 | Routes (incl. redistributed) | `show ip route` | OSPF externals (type-2) visible wherever BGP routes were redistributed in |
 | Loopbacks | `show ip route` / interface list | Router ID always equals the loopback - see [docs/routing.md](routing.md#router-ids) |
 | Redundant paths | `show ip route` (ECMP `*` markers), `show bgp` (`maximum-paths ibgp`) | Every layer boundary is dual-homed - see [docs/architecture.md](architecture.md) |
+| SSH management access | `ssh atlas@<mgmt-ip>` | Password `AtlasLab123!`, login shell is `vtysh` itself - see "SSH" below |
+| Firewall policy enforcement | Cross-site pings in `labs/07-multi-city` | Real iptables `FORWARD` chain, default-deny inbound - see [labs/07-multi-city/README.md](../labs/07-multi-city/README.md#firewall-policy) |
+| L2 switching | `lldpcli show neighbors` on an `atlaslab/switch` node's peers, or MAC learning behavior | Real kernel bridge per switch, see [labs/07-multi-city/README.md](../labs/07-multi-city/README.md) |
 
 ## LLDP
 
@@ -40,13 +43,37 @@ The task brief asked for SSH, SNMP, syslog, NTP, and DNS "where
 practical," with instructions to document rather than fake what isn't
 reasonably supportable. Here's the assessment for each, done honestly:
 
-- **SSH**: not configured. `openssh-server` is installable via `apk` in
-  the same way `lldpd` was, and would need `sshd_config` plus a
-  decision on credentials/host-key management across 20+ nodes. This is
-  a reasonable, contained follow-up (see "Recommended PR-003" in the
-  final report) but wasn't done here to keep the credential-management
-  surface out of a first pass. `docker exec <node> vtysh` is the
-  in-repo equivalent for now.
+- **SSH**: configured. Every `atlaslab/frr` node runs `sshd` (Alpine's
+  `openssh` package, layered on in `docker/frr-atlaslab/Dockerfile`
+  alongside `lldpd`) reachable over containerlab's management network
+  (`eth0`). Login is `ssh atlas@<mgmt-ip>` with the password
+  `AtlasLab123!` - a single, static, documented credential shared
+  across every node deliberately (this is a local, ephemeral lab
+  network, not a production fleet; see the Dockerfile for the full
+  rationale). The `atlas` account's login shell is `/usr/bin/vtysh`
+  itself, so both interactive (`ssh atlas@<ip>`) and one-shot
+  (`ssh atlas@<ip> "show ip ospf neighbor"`) sessions drop straight into
+  the FRR CLI - the same experience as a real router, and no different
+  syntax for Atlas to special-case versus `docker exec <node> vtysh -c
+  '...'`. SSH host keys are generated fresh per container at startup
+  (`entrypoint.sh`, `ssh-keygen -A`) rather than baked into the image,
+  so every node - and every redeploy - gets its own unique key; connect
+  with `-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null` for
+  exactly that reason (there is nothing long-lived here for host-key
+  pinning to protect). `make verify` builds/validates the image has
+  `sshd` + the `atlas` account; `make test` SSH-logs into every
+  deployed node and runs a real vtysh command as part of the regression
+  suite (`scripts/test-connectivity.sh`) - see
+  [docs/testing.md](testing.md).
+
+  `labs/07-multi-city` adds two more images - `atlaslab/firewall` and
+  `atlaslab/switch` - with the same SSH access and credential, but a
+  plain `/bin/sh` login shell instead of `vtysh` (there's no FRR CLI to
+  drop into on a node that isn't running FRR). `scripts/test-
+  connectivity.sh`'s SSH check is role-aware: it runs `show version`
+  against nodes with an FRR `daemons` file and a trivial `echo` against
+  everything else, so both node types get a real, verified login+command
+  check, not just a TCP-connect probe.
 - **SNMP**: **not reasonably supportable** without rebuilding FRR
   itself. FRR's SNMP support (the `snmpd`/AgentX integration for
   OSPF-MIB/BGP4-MIB) is a compile-time option (`--enable-snmp`) that the
@@ -82,9 +109,21 @@ reasonably supportable. Here's the assessment for each, done honestly:
 
 ## Suggested Atlas polling pattern
 
-For OSPF/BGP/route/LLDP state, `docker exec clab-<lab>-<node> vtysh -c
-'<show command>'` is the most direct integration point today (no SSH
-daemon needed - Atlas would need Docker socket or `docker exec`
-access to the host, which is how every script in `scripts/` already
-operates). If Atlas is meant to poll purely over the network the way it
-would a real device, SSH (see above) is the natural next step.
+Two supported integration points, pick whichever matches how Atlas is
+deployed relative to this lab:
+
+- **Over the network, like a real device:** `ssh atlas@<mgmt-ip>
+  '<show command>'` (see "SSH" above for the credential and the
+  `StrictHostKeyChecking=no` note). This is the realistic path if Atlas
+  runs anywhere other than the lab host itself, since it only needs
+  network reachability to each node's management IP, not Docker access.
+- **From the lab host directly:** `docker exec clab-<lab>-<node> vtysh
+  -c '<show command>'` - what every script under `scripts/` already
+  uses internally. Requires Docker socket / `docker exec` access to the
+  host running containerlab, but has zero SSH-session overhead if Atlas
+  already runs there.
+
+Both land in the same place: a single `vtysh -c '<command>'` call
+against the node's real FRR state, since the `atlas` SSH account's
+login shell *is* `vtysh` (see above) - there's no behavioral difference
+between the two paths beyond transport.

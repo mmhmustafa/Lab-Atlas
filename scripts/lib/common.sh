@@ -123,3 +123,54 @@ print_help_header() {
   echo "${C_BOLD}AtlasLab${C_RESET} - $1"
   echo
 }
+
+# --- SSH management access ---------------------------------------------
+# Credentials for the "atlas" SSH management account baked into every
+# atlaslab/frr node - see docker/frr-atlaslab/Dockerfile and
+# docs/atlas-integration.md. Static and documented deliberately: this is
+# a local, ephemeral lab network (containerlab's own Docker bridge, not
+# exposed beyond the host), not a production fleet.
+ATLASLAB_SSH_USER="atlas"
+ATLASLAB_SSH_PASSWORD="AtlasLab123!"
+export ATLASLAB_SSH_USER ATLASLAB_SSH_PASSWORD
+readonly ATLASLAB_SSH_USER ATLASLAB_SSH_PASSWORD
+readonly ATLASLAB_SSH_ASKPASS="${ATLASLAB_ROOT}/scripts/lib/ssh-askpass.sh"
+
+# lab_mgmt_ips <lab-name> -> "node ip" lines, one per currently deployed
+# node, read from containerlab's own inspect JSON (never re-implements
+# Docker network introspection). Empty output if the lab isn't deployed.
+#
+# Delegates to scripts/lib/lab_mgmt_ips.py (a real file, not an inline
+# heredoc): this needs the piped JSON on stdin *and* an argv prefix, and
+# `python3 - <<PYEOF ... PYEOF` can't do both at once - the heredoc
+# redirect wins control of stdin over the pipe, so the piped JSON never
+# reaches the script (json.load(sys.stdin) sees EOF immediately). This
+# silently broke every caller until caught by direct testing.
+lab_mgmt_ips() {
+  local lab="$1"
+  local cname prefix
+  cname="$(clab_name "$lab")"
+  prefix="clab-${cname}-"
+  ( cd "${ATLASLAB_ROOT}/labs/${lab}" && containerlab inspect -t lab.clab.yml -f json 2>/dev/null ) \
+    | python3 "${ATLASLAB_ROOT}/scripts/lib/lab_mgmt_ips.py" "$prefix"
+}
+
+# ssh_atlas_run <mgmt-ip> <remote-command...> - runs a command on a node
+# over SSH as the atlas management user, using password auth driven via
+# SSH_ASKPASS (see scripts/lib/ssh-askpass.sh) rather than sshpass, which
+# isn't part of this environment's default toolset. setsid detaches from
+# any controlling tty so ssh has no fallback but to use the askpass
+# helper; SSH_ASKPASS_REQUIRE=force is the belt-and-braces version of the
+# same thing on OpenSSH >= 8.4.
+ssh_atlas_run() {
+  local host="$1"; shift
+  SSH_ASKPASS="$ATLASLAB_SSH_ASKPASS" SSH_ASKPASS_REQUIRE=force \
+    setsid ssh -o StrictHostKeyChecking=no \
+               -o UserKnownHostsFile=/dev/null \
+               -o LogLevel=ERROR \
+               -o PreferredAuthentications=password \
+               -o PubkeyAuthentication=no \
+               -o ConnectTimeout=5 \
+               -o BatchMode=no \
+               "${ATLASLAB_SSH_USER}@${host}" "$@" </dev/null
+}

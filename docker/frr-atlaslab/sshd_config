@@ -1,0 +1,33 @@
+# AtlasLab - custom sshd_config for the atlaslab/frr image.
+#
+# Purpose-built for a single management account ("atlas", see the
+# Dockerfile) reachable over containerlab's management network (eth0).
+# Host keys are generated at container startup by entrypoint.sh
+# (ssh-keygen -A), not baked into the image - see that script for why.
+
+Port 22
+AddressFamily inet
+
+# No UsePAM directive here at all, deliberately: this image's sshd
+# (Alpine's musl-based openssh) is built without PAM support, and
+# "UsePAM" - yes OR no - is an unrecognized keyword to a PAM-less sshd,
+# which refuses to start ("Unsupported option UsePAM"). Omitting the
+# directive entirely is correct, not just "set it to no". Plain password
+# auth against /etc/shadow works fine without PAM in this build.
+PasswordAuthentication yes
+PubkeyAuthentication yes
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
+
+# Least privilege: only the documented management account may connect.
+PermitRootLogin no
+AllowUsers atlas
+
+# Lab convenience: containers are redeployed constantly and host keys
+# are regenerated fresh every time (see entrypoint.sh), so there is
+# nothing long-lived for these to protect against here.
+StrictModes no
+LogLevel INFO
+
+Subsystem sftp internal-sftp

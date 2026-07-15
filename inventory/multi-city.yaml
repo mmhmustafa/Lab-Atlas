@@ -1,0 +1,31 @@
+---
+# AtlasLab - inventory/multi-city.yaml
+#
+# Source of truth for labs/07-multi-city: four identically-structured
+# "city" sites, full-mesh eBGP between their edge routers over a
+# simulated inter-city WAN. Consumed by scripts/generate-multicity.py.
+#
+# Every site has the exact same internal shape by design (edge router,
+# firewall, core router, two L2 switches, two access routers, one
+# server), so only the site list (name/idx/ASN) needs to live in data -
+# the repeated per-site node/link template lives once in the generator,
+# not copy-pasted four times here. See labs/07-multi-city/README.md for
+# the full addressing/routing/firewall-policy writeup.
+#
+# idx drives every site's addressing deterministically (loopbacks,
+# internal segments, p2p links - see the generator for the exact
+# formulas) - change it only if you also intend to renumber that site.
+
+sites:
+  - name: mumbai
+    idx: 0
+    asn: 65010
+  - name: delhi
+    idx: 1
+    asn: 65020
+  - name: hyderabad
+    idx: 2
+    asn: 65030
+  - name: chennai
+    idx: 3
+    asn: 65040

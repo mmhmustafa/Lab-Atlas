@@ -1,0 +1,22 @@
+# AtlasLab - sshd_config for the atlaslab/switch image.
+# Same rationale as docker/frr-atlaslab/sshd_config: no UsePAM directive
+# (this sshd build has no PAM support - the keyword itself is rejected,
+# not just the PAM behavior), host keys generated fresh at container
+# startup rather than baked into the image.
+
+Port 22
+AddressFamily inet
+
+PasswordAuthentication yes
+PubkeyAuthentication yes
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
+
+PermitRootLogin no
+AllowUsers atlas
+
+StrictModes no
+LogLevel INFO
+
+Subsystem sftp internal-sftp

@@ -14,12 +14,13 @@
 SHELL := /usr/bin/env bash
 LAB   ?= 06-atlas-demo
 
-.PHONY: help verify deploy inspect test diagnostics destroy generate redeploy list-labs
+.PHONY: help verify deploy inspect test diagnostics destroy generate generate-multicity redeploy list-labs
 
 help:
 	@echo "AtlasLab make targets (LAB=$(LAB)):"
 	@echo "  make verify                 - check the local environment is ready"
-	@echo "  make generate                - render FRR configs + topology from inventory/devices.yaml"
+	@echo "  make generate                - render FRR configs + topology from inventory/devices.yaml (06-atlas-demo)"
+	@echo "  make generate-multicity      - render labs/07-multi-city from inventory/multi-city.yaml"
 	@echo "  make deploy      [LAB=name] - deploy a lab"
 	@echo "  make inspect     [LAB=name] - show deployed lab state"
 	@echo "  make test        [LAB=name] - run OSPF/BGP/reachability regression tests"
@@ -33,6 +34,9 @@ verify:
 
 generate:
 	python3 scripts/generate-configs.py --lab $(LAB)
+
+generate-multicity:
+	python3 scripts/generate-multicity.py
 
 deploy:
 	./scripts/deploy-lab.sh $(LAB)
