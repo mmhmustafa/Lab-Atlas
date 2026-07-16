@@ -166,6 +166,71 @@ edge, listed against that site's access1/access2) -
 `scripts/test-connectivity.sh` reads it directly, the same mechanism
 `06-atlas-demo` uses for its own by-design-unreachable pairs.
 
+## Firewall show-command CLI
+
+`ssh atlas@<fw-mgmt-ip>` drops into `fwsh`
+(`docker/firewall-atlaslab/fwsh`) - a small router-style "show command"
+shell, the same idea as `vtysh` on the FRR nodes but scoped to what a
+firewall admin actually wants to inspect, not a general-purpose shell:
+
+```
+show version           - image/OS identity (includes hostname)
+show hostname           - this node's hostname
+show interfaces        - interface addressing
+show route              - routing table
+show firewall rules    - live iptables FORWARD chain, packet/byte counters
+show lldp neighbors    - LLDP-discovered neighbors on topology links
+show running-config    - the generated setup.sh this node booted with
+show log                - startup / config-apply log
+```
+
+Works both interactively (`ssh atlas@<ip>`) and as a one-shot command
+(`ssh atlas@<ip> "show firewall rules"`), same as `vtysh`. It's
+read-only by design: anything that isn't one of the commands above is
+rejected by `fwsh` itself before it ever reaches a shell - confirmed
+directly, `doas /usr/sbin/iptables -F FORWARD` typed at the prompt just
+gets `% Unknown command`. The one command that does need root (viewing
+live netfilter counters requires it, even just to *list* them) is
+scoped to a single exact invocation via `/etc/doas.conf`'s `args`
+clause, not a general privilege grant - there's no `sudo`, no root
+password, and no way to reach an unrestricted shell from this account.
+
+## Switch show-command CLI
+
+`ssh atlas@<sw-mgmt-ip>` drops into `swsh`
+(`docker/switch-atlaslab/swsh`) - the same idea, scoped to a pure L2
+bridge:
+
+```
+show version            - image/OS identity (includes hostname)
+show hostname            - this node's hostname
+show interfaces         - bridge port status (bridge link show)
+show mac-address-table  - learned MAC addresses (bridge fdb show)
+show lldp neighbors     - LLDP-discovered devices on this switch's ports
+show ip interface       - br0/eth0 addressing (management only - the
+                           switch has no data-plane IP of its own)
+show log                 - port-enslavement / startup log
+```
+
+Unlike `fwsh`, none of this needs a `doas` rule at all - `bridge`/`ip`
+link and fdb queries are unprivileged reads on this image (confirmed
+directly: no "Permission denied" the way `iptables -L` needs root even
+just to list rules), so `swsh` is pure convenience wrapping, not a
+privilege boundary.
+
+## LLDP on every device
+
+All three images run `lldpd` (restricted to `eth1-9`, same rationale as
+on the FRR nodes - see [docs/atlas-integration.md](../../docs/atlas-integration.md#lldp)),
+so every device in this lab - router, firewall, switch - is
+LLDP-discoverable. The switch consumes LLDP on its ports the way a real
+managed switch does (a kernel bridge never floods link-local
+`01:80:c2:00:00:0e` frames), so discovered adjacency matches physical
+wiring exactly - verified live: `mumbai-sw1` reports `mumbai-core`/
+`mumbai-access1`/`mumbai-server` on its three ports, and those devices
+see *the switch* as their neighbor, not each other; `mumbai-fw` reports
+`mumbai-edge` on its outside leg and `mumbai-core` on its inside leg.
+
 ## Deploy and test
 
 ```bash

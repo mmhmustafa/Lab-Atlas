@@ -26,6 +26,18 @@ ip link add br0 type bridge
 ip link set br0 up
 log "br0 created"
 
+# Same interface restriction as atlaslab/frr's lldpd (eth0 is the
+# shared management bridge - see docker/frr-atlaslab/entrypoint.sh).
+# lldpd works fine on bridge-enslaved ports (it uses per-port raw
+# sockets), and a Linux bridge never *forwards* LLDP frames
+# (01:80:c2:00:00:0e is link-local scope the kernel bridge won't
+# flood), so this switch consumes LLDP itself and appears as the
+# neighbor of everything plugged into it - exactly how a real managed
+# L2 switch behaves, and exactly the physical wiring Atlas should
+# discover.
+lldpd -I eth1,eth2,eth3,eth4,eth5,eth6,eth7,eth8,eth9
+log "lldpd started"
+
 ssh-keygen -A >/var/log/atlaslab/sshd-keygen.log 2>&1
 /usr/sbin/sshd
 log "sshd started"

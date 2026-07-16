@@ -1,0 +1,82 @@
+#!/bin/sh
+# AtlasLab - atlaslab/switch "show" CLI (swsh)
+#
+# The atlas SSH user's login shell on every switch node - same pattern
+# as vtysh on atlaslab/frr and fwsh on atlaslab/firewall, scoped to
+# what's useful on a pure L2 bridge. Unlike fwsh, none of this needs
+# root: `bridge`/`ip` link and fdb queries are unprivileged reads
+# (confirmed by direct testing - no doas/sudo rule needed here at all,
+# there's simply nothing to elevate).
+#
+# Handles both SSH exec mode (`ssh atlas@host "show interfaces"`, which
+# sshd runs as `swsh -c "show interfaces"`) and an interactive REPL
+# (`ssh atlas@host` with no command).
+
+HOSTNAME="$(cat /etc/hostname 2>/dev/null || hostname)"
+
+run_show() {
+  cmd="$*"
+  case "$cmd" in
+    "show version")
+      echo "AtlasLab switch (${HOSTNAME}) on $(uname -sr)"
+      grep PRETTY_NAME /etc/os-release
+      ;;
+    "show hostname")
+      echo "$HOSTNAME"
+      ;;
+    "show interfaces"|"show interface"|"show bridge")
+      bridge link show
+      ;;
+    "show mac-address-table"|"show mac address-table"|"show fdb"|"show bridge fdb")
+      bridge fdb show
+      ;;
+    "show ip interface"|"show ip addr")
+      ip -br addr show
+      ;;
+    "show lldp neighbors"|"show lldp neighbor"|"show lldp")
+      lldpcli show neighbors
+      ;;
+    "show log")
+      tail -n 40 /var/log/atlaslab/switch.log
+      ;;
+    "show help"|"help"|"?")
+      cat <<'EOF'
+Available commands:
+  show version            - image/OS identity (includes hostname)
+  show hostname            - this node's hostname
+  show interfaces         - bridge port status (bridge link show)
+  show mac-address-table  - learned MAC addresses (bridge fdb show)
+  show lldp neighbors     - LLDP-discovered devices on this switch's ports
+  show ip interface       - br0/eth0 addressing (management only - this
+                             switch has no data-plane IP of its own)
+  show log                 - port-enslavement / startup log
+  exit | quit              - end session
+EOF
+      ;;
+    "exit"|"quit")
+      exit 0
+      ;;
+    "")
+      ;;
+    *)
+      echo "% Unknown command: ${cmd}"
+      echo "Type 'show help' for available commands."
+      return 1
+      ;;
+  esac
+}
+
+if [ "$1" = "-c" ]; then
+  shift
+  run_show "$*"
+  exit $?
+fi
+
+echo "AtlasLab switch CLI - ${HOSTNAME}"
+echo "Type 'show help' for available commands, 'exit' to quit."
+while true; do
+  printf '%s> ' "$HOSTNAME"
+  IFS= read -r line || { echo; break; }
+  [ -z "$line" ] && continue
+  run_show "$line"
+done

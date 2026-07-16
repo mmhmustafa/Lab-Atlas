@@ -3,7 +3,10 @@
 # A pure layer-2 switch node: bridges every topology-facing interface
 # (eth1..ethN) together inside its own network namespace using a real
 # Linux kernel bridge (genuine MAC learning/forwarding), plus SSH
-# management access for consistency with atlaslab/frr.
+# management access for consistency with atlaslab/frr - the atlas
+# account's login shell is swsh, a small router-style "show command"
+# CLI (see ./swsh), the same idea as vtysh/fwsh scoped to this image's
+# role.
 #
 # containerlab's own "bridge" kind was considered and rejected: it
 # requires a Linux bridge to already exist on the *host*, which needs
@@ -17,12 +20,18 @@ FROM alpine:latest
 ARG ATLASLAB_SSH_USER=atlas
 ARG ATLASLAB_SSH_PASSWORD=AtlasLab123!
 
-RUN apk add --no-cache iproute2 bridge openssh shadow tini \
+RUN apk add --no-cache iproute2 bridge openssh shadow tini lldpd \
     && mkdir -p /var/run/sshd /run/sshd /var/log/atlaslab \
-    && adduser -D -s /bin/sh "${ATLASLAB_SSH_USER}" \
-    && echo "${ATLASLAB_SSH_USER}:${ATLASLAB_SSH_PASSWORD}" | chpasswd
+    && adduser -D -s /usr/local/bin/swsh "${ATLASLAB_SSH_USER}" \
+    && echo "${ATLASLAB_SSH_USER}:${ATLASLAB_SSH_PASSWORD}" | chpasswd \
+    # lldpd's control socket is group-accessible (lldpd:lldpd, mode 770),
+    # so group membership is all swsh's "show lldp neighbors" needs.
+    && addgroup "${ATLASLAB_SSH_USER}" lldpd
 
 COPY sshd_config /etc/ssh/sshd_config
+
+COPY swsh /usr/local/bin/swsh
+RUN chmod +x /usr/local/bin/swsh
 
 # Same build-time validation as atlaslab/frr: generate throwaway host
 # keys, validate the config, delete the keys again so the image itself

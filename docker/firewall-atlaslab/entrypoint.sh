@@ -46,6 +46,14 @@ else
   log "WARNING: no /etc/atlaslab-firewall/setup.sh bind-mounted - firewall has no addressing or rules"
 fi
 
+# Same interface restriction as atlaslab/frr's lldpd (see
+# docker/frr-atlaslab/entrypoint.sh): eth0 is containerlab's shared
+# management bridge that every node in every deployed lab sits on -
+# without -I, all of them would appear LLDP-adjacent to this firewall,
+# a false full mesh on top of the real topology.
+lldpd -I eth1,eth2,eth3,eth4,eth5,eth6,eth7,eth8,eth9
+log "lldpd started"
+
 ssh-keygen -A >>"$LOG" 2>&1
 /usr/sbin/sshd
 log "sshd started"

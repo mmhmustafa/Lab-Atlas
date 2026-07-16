@@ -18,24 +18,40 @@ configured and why.
 | Redundant paths | `show ip route` (ECMP `*` markers), `show bgp` (`maximum-paths ibgp`) | Every layer boundary is dual-homed - see [docs/architecture.md](architecture.md) |
 | SSH management access | `ssh atlas@<mgmt-ip>` | Password `AtlasLab123!`, login shell is `vtysh` itself - see "SSH" below |
 | Firewall policy enforcement | Cross-site pings in `labs/07-multi-city` | Real iptables `FORWARD` chain, default-deny inbound - see [labs/07-multi-city/README.md](../labs/07-multi-city/README.md#firewall-policy) |
-| L2 switching | `lldpcli show neighbors` on an `atlaslab/switch` node's peers, or MAC learning behavior | Real kernel bridge per switch, see [labs/07-multi-city/README.md](../labs/07-multi-city/README.md) |
+| L2 switching | `ssh atlas@<switch-ip> "show mac-address-table"`, or `lldpcli show neighbors` on its peers | Real kernel bridge per switch, see [labs/07-multi-city/README.md](../labs/07-multi-city/README.md) |
 
 ## LLDP
 
-Every lab node runs `lldpd`, layered onto the base `frrouting/frr` image
-by `docker/frr-atlaslab/Dockerfile` (the base image has no LLDP daemon
-at all). `lldpd` is deliberately restricted to the topology-facing
-interfaces (`-I eth1,eth2,...,eth9`) and excludes `eth0`, containerlab's
-shared management-network interface - without that restriction, every
-node in a lab would appear LLDP-adjacent to every other node (they're
-all on the same Docker bridge subnet via `eth0`), producing a false,
-fully-meshed topology on top of the real point-to-point one. With the
-restriction in place, `lldpcli show neighbors` on any node reports
-exactly its genuine topology neighbors, matching `inventory/devices.yaml`
-/ `labs/<lab>/lab.clab.yml` one-for-one.
+Every lab node - all three images - runs `lldpd`: layered onto the base
+`frrouting/frr` image by `docker/frr-atlaslab/Dockerfile` (the base
+image has no LLDP daemon at all), and equally into `atlaslab/firewall`
+and `atlaslab/switch`, so routers, firewalls, and switches are all
+LLDP-discoverable devices. `lldpd` is deliberately restricted to the
+topology-facing interfaces (`-I eth1,eth2,...,eth9`) and excludes
+`eth0`, containerlab's shared management-network interface - without
+that restriction, every node in a lab would appear LLDP-adjacent to
+every other node (they're all on the same Docker bridge subnet via
+`eth0`), producing a false, fully-meshed topology on top of the real
+point-to-point one. With the restriction in place, `lldpcli show
+neighbors` on any node reports exactly its genuine topology neighbors,
+matching the inventory / `labs/<lab>/lab.clab.yml` one-for-one.
 
-Verified in 06-atlas-demo and every other lab as part of validating this
-repository.
+The switches participate in LLDP the way a real managed L2 switch does:
+a Linux kernel bridge never floods `01:80:c2:00:00:0e` (link-local
+scope) frames, so each switch *consumes* LLDP on its ports and appears
+as the neighbor of everything plugged into it, rather than letting the
+routers behind it see each other as fake direct neighbors. Verified
+live in 07-multi-city: `mumbai-core` reports `mumbai-fw`/`mumbai-sw1`/
+`mumbai-sw2` on eth1-3 (not the access routers or server behind the
+switches), `mumbai-sw1` reports `mumbai-core`/`mumbai-access1`/
+`mumbai-server` on its three ports, and `mumbai-fw` reports
+`mumbai-edge` outside / `mumbai-core` inside - the discovered topology
+is the physical wiring, edge to edge.
+
+On firewalls and switches, `show lldp neighbors` is part of
+`fwsh`/`swsh` (no privilege needed - the `atlas` account is in the
+`lldpd` group, and lldpd's control socket is group-accessible).
+Verified in every lab as part of validating this repository.
 
 ## Optional services
 
@@ -67,13 +83,40 @@ reasonably supportable. Here's the assessment for each, done honestly:
   [docs/testing.md](testing.md).
 
   `labs/07-multi-city` adds two more images - `atlaslab/firewall` and
-  `atlaslab/switch` - with the same SSH access and credential, but a
-  plain `/bin/sh` login shell instead of `vtysh` (there's no FRR CLI to
-  drop into on a node that isn't running FRR). `scripts/test-
-  connectivity.sh`'s SSH check is role-aware: it runs `show version`
-  against nodes with an FRR `daemons` file and a trivial `echo` against
-  everything else, so both node types get a real, verified login+command
-  check, not just a TCP-connect probe.
+  `atlaslab/switch` - with the same SSH access and credential.
+  `atlaslab/firewall`'s login shell is `fwsh`
+  (`docker/firewall-atlaslab/fwsh`), a small router-style "show command"
+  CLI in the same spirit as `vtysh` rather than a raw shell: `show
+  version`, `show interfaces`, `show route`, `show firewall rules` (the
+  live iptables `FORWARD` chain, with packet/byte counters), `show
+  running-config` (the generated `setup.sh` the node actually booted
+  with), and `show log`. It's read-only by design - unrecognized input
+  is rejected outright by `fwsh` itself (confirmed: `doas /usr/sbin/
+  iptables -F FORWARD` typed at the prompt gets "% Unknown command",
+  never reaches a shell or `doas`), and the one privileged operation it
+  does need (root is required to even *list* live netfilter rules) is
+  scoped to a single exact command via `/etc/doas.conf` - `doas.conf`'s
+  `args` clause requires an exact argument match, so this is nowhere
+  near a general sudo grant.
+
+  `atlaslab/switch`'s login shell is `swsh`
+  (`docker/switch-atlaslab/swsh`), the same idea again: `show version`,
+  `show interfaces` (`bridge link show` - port/forwarding state), `show
+  mac-address-table` (`bridge fdb show` - genuine learned-MAC data,
+  useful for Atlas to confirm L2 discovery), `show ip interface`
+  (`br0`/`eth0` addressing - the switch has no data-plane IP of its
+  own, only its bridge and management interfaces), and `show log`.
+  Unlike `fwsh`, none of this needs a `doas` rule at all - `bridge`/`ip`
+  link and fdb queries are unprivileged reads, confirmed directly (no
+  "Permission denied" the way `iptables -L` needs root even just to
+  list rules).
+
+  `scripts/test-connectivity.sh`'s SSH check is role-aware: it runs
+  `show version` against nodes with an FRR `daemons` file (which both
+  `fwsh` and `swsh` also happen to implement, but the check doesn't
+  rely on that) and a trivial `echo` against everything else, so every
+  node type gets a real, verified login+command check, not just a
+  TCP-connect probe.
 - **SNMP**: **not reasonably supportable** without rebuilding FRR
   itself. FRR's SNMP support (the `snmpd`/AgentX integration for
   OSPF-MIB/BGP4-MIB) is a compile-time option (`--enable-snmp`) that the

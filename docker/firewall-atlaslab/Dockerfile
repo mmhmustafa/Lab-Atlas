@@ -16,12 +16,25 @@ FROM alpine:latest
 ARG ATLASLAB_SSH_USER=atlas
 ARG ATLASLAB_SSH_PASSWORD=AtlasLab123!
 
-RUN apk add --no-cache iproute2 iptables openssh shadow tini \
+RUN apk add --no-cache iproute2 iptables openssh shadow tini doas lldpd \
     && mkdir -p /var/run/sshd /run/sshd /var/log/atlaslab /etc/atlaslab-firewall \
-    && adduser -D -s /bin/sh "${ATLASLAB_SSH_USER}" \
-    && echo "${ATLASLAB_SSH_USER}:${ATLASLAB_SSH_PASSWORD}" | chpasswd
+    && adduser -D -s /usr/local/bin/fwsh "${ATLASLAB_SSH_USER}" \
+    && echo "${ATLASLAB_SSH_USER}:${ATLASLAB_SSH_PASSWORD}" | chpasswd \
+    # lldpd's control socket is group-accessible (lldpd:lldpd, mode 770 -
+    # verified on this exact package), so group membership is all fwsh's
+    # "show lldp neighbors" needs - no doas rule required for it.
+    && addgroup "${ATLASLAB_SSH_USER}" lldpd
 
 COPY sshd_config /etc/ssh/sshd_config
+
+# doas.conf must be owned by root and not group/other-writable, or doas
+# refuses to run at all - see doas.conf's own comment for why this is
+# one exact, narrowly-scoped rule rather than a general privilege grant.
+COPY doas.conf /etc/doas.conf
+RUN chown root:root /etc/doas.conf && chmod 0644 /etc/doas.conf
+
+COPY fwsh /usr/local/bin/fwsh
+RUN chmod +x /usr/local/bin/fwsh
 
 RUN ssh-keygen -A \
     && /usr/sbin/sshd -t \
