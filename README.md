@@ -110,12 +110,16 @@ credential is deliberately static and public: these labs live on a
 local Docker bridge on your own machine and are torn down constantly -
 don't expose the management network beyond the host.)
 
-**4. (WSL2 users only) Reaching the nodes from Windows itself:**
+**4. Reaching the nodes from your host OS:**
 
-From inside WSL, everything above just works - the management network
-(`172.20.20.0/24`) is a local Docker bridge there. To SSH from
-*Windows* (PuTTY, Windows Terminal, a GUI tool like Atlas running on
-the host), Windows needs a route to that subnet via the WSL VM:
+- **Native Linux: nothing to do.** The management network
+  (`172.20.20.0/24`) is a Docker bridge on the host itself, so every
+  node's management IP is directly reachable the moment the lab is
+  deployed - `ssh atlas@<mgmt-ip>` from any terminal on the machine.
+- **Windows + WSL2:** from *inside WSL*, same story - it just works.
+  But Windows itself has no route to that subnet (the bridge lives
+  inside the WSL VM). To SSH from Windows (PuTTY, Windows Terminal, a
+  GUI tool like Atlas running on the host), add the route:
 
 ```powershell
 # from an elevated (Administrator) PowerShell:

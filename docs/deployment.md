@@ -82,13 +82,20 @@ fixed) building this.
 `atlas` account; `make test` SSH-logs into every deployed node as part
 of the regression suite.
 
-### Reaching the lab from the Windows host (WSL2)
+### Reaching the lab from the host OS
 
-Everything above works as-is from inside WSL - the management network
-(`172.20.20.0/24`) is a Docker bridge local to the WSL VM. Windows
-itself, however, has no route to that subnet: to SSH from a Windows
-terminal or point a Windows-side tool (e.g. Atlas running on the host)
-at the lab, add a route via the WSL VM's address:
+**Native Linux: no extra steps.** containerlab's management network
+(`172.20.20.0/24`) is a Docker bridge created on the host itself, so
+every node's management IP is directly reachable from any terminal or
+tool on the machine the moment the lab is deployed - there is no
+Linux equivalent of the Windows route script below, because there's
+nothing to route across.
+
+**Windows + WSL2:** everything works as-is from *inside* WSL - there
+the bridge is local, same as native Linux. Windows itself, however,
+has no route to that subnet (the bridge lives inside the WSL VM): to
+SSH from a Windows terminal or point a Windows-side tool (e.g. Atlas
+running on the host) at the lab, add a route via the WSL VM's address:
 
 ```powershell
 # from an elevated (Administrator) PowerShell:
