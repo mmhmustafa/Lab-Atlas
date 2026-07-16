@@ -110,6 +110,23 @@ credential is deliberately static and public: these labs live on a
 local Docker bridge on your own machine and are torn down constantly -
 don't expose the management network beyond the host.)
 
+**4. (WSL2 users only) Reaching the nodes from Windows itself:**
+
+From inside WSL, everything above just works - the management network
+(`172.20.20.0/24`) is a local Docker bridge there. To SSH from
+*Windows* (PuTTY, Windows Terminal, a GUI tool like Atlas running on
+the host), Windows needs a route to that subnet via the WSL VM:
+
+```powershell
+# from an elevated (Administrator) PowerShell:
+.\scripts\configure-windows-route.ps1
+```
+
+Re-run it after every WSL restart - WSL gets a new IP each time, and
+the route is deliberately non-persistent (a persistent route would go
+stale for the same reason). The route only exists on your own machine;
+it does not expose the lab to your LAN.
+
 ## Documentation
 
 - [docs/architecture.md](docs/architecture.md) - topology design and redundancy model

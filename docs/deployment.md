@@ -82,6 +82,33 @@ fixed) building this.
 `atlas` account; `make test` SSH-logs into every deployed node as part
 of the regression suite.
 
+### Reaching the lab from the Windows host (WSL2)
+
+Everything above works as-is from inside WSL - the management network
+(`172.20.20.0/24`) is a Docker bridge local to the WSL VM. Windows
+itself, however, has no route to that subnet: to SSH from a Windows
+terminal or point a Windows-side tool (e.g. Atlas running on the host)
+at the lab, add a route via the WSL VM's address:
+
+```powershell
+# from an elevated (Administrator) PowerShell:
+.\scripts\configure-windows-route.ps1
+```
+
+The script resolves WSL's current IP (`wsl hostname -I`), replaces any
+stale route, and installs `172.20.20.0/24` via that address - verified
+working (SSH from Windows to a lab node's port 22) in this environment.
+Two properties to know:
+
+- **Re-run it after every WSL restart.** WSL gets a fresh IP each
+  time it starts, and the route is deliberately installed
+  *non-persistently* (no `-p`): a persistent route would silently go
+  stale at the next WSL restart anyway, which is a worse failure mode
+  than an obviously-missing one.
+- **It only affects your own machine.** A host route doesn't expose
+  the lab to your LAN - the management network (and its static,
+  public, documented credential) stays local either way.
+
 ## Inspecting a running lab
 
 ```bash
