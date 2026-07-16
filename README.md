@@ -49,15 +49,52 @@ testing; see [docs/architecture.md](docs/architecture.md) for its design.
 07-multi-city is the primary target for multi-site/firewall/L2 scenarios;
 see [labs/07-multi-city/README.md](labs/07-multi-city/README.md).
 
-## Quick start
+## Getting started from scratch
+
+The lab needs a **Linux environment** - native Linux, or Windows with
+WSL2 + Ubuntu (which is what this repo was built and validated on).
+macOS is untested.
+
+**1. One-time prerequisites:**
 
 ```bash
-make verify                    # confirm docker/containerlab/images are ready
-make deploy LAB=06-atlas-demo   # deploy a lab (defaults to 06-atlas-demo)
-make test   LAB=06-atlas-demo   # OSPF/BGP/reachability regression suite
-make inspect LAB=06-atlas-demo  # current state: containers, interfaces
-make diagnostics LAB=06-atlas-demo  # full show-command + log bundle
-make destroy LAB=06-atlas-demo YES=1
+# Docker Engine - https://docs.docker.com/engine/install/
+# then make sure your user can run docker without sudo:
+sudo usermod -aG docker $USER     # log out and back in afterwards
+
+# containerlab (this repo was validated against 0.77):
+bash -c "$(curl -sL https://get.containerlab.dev)"
+
+# Python (for the config generators) and basics:
+sudo apt install -y python3 python3-yaml python3-jinja2 git make openssh-client
+```
+
+**2. Clone and verify:**
+
+```bash
+git clone https://github.com/mmhmustafa/Lab-Atlas.git
+cd Lab-Atlas
+make verify
+```
+
+`make verify` (`scripts/verify-environment.sh`) does the heavy lifting:
+it checks Docker/containerlab/Python/`ssh`/`setsid`, pulls
+`frrouting/frr` if it's missing, and builds all three custom images -
+`atlaslab/frr` (frrouting/frr + lldpd + sshd), `atlaslab/firewall`, and
+`atlaslab/switch` - so there is nothing to build by hand. It rebuilds
+them on every run (Docker's layer cache makes a no-op rebuild fast), so
+it also picks up any Dockerfile change automatically.
+
+**3. Deploy, test, use, tear down:**
+
+```bash
+make list-labs                      # the seven available labs
+make deploy LAB=07-multi-city       # or LAB=06-atlas-demo, etc.
+# allow 60-90s for OSPF/BGP convergence on the two big labs, then:
+make test   LAB=07-multi-city       # OSPF/BGP/SSH/reachability suite
+make inspect LAB=07-multi-city      # containers, interfaces, mgmt IPs
+make diagnostics LAB=07-multi-city  # full show-command + log bundle
+make destroy LAB=07-multi-city YES=1
 ```
 
 Every `make` target is a thin wrapper around a script in `scripts/` - see
@@ -66,19 +103,12 @@ and exit codes.
 
 Every node is also reachable over SSH for real router-style management
 access - `ssh atlas@<mgmt-ip>` (password `AtlasLab123!`, IPs from
-`make inspect`) drops straight into the FRR CLI. See
-[docs/deployment.md](docs/deployment.md#ssh-management-access).
-
-## Requirements
-
-Already provided in this environment and not reinstalled by anything
-here: WSL2 + Ubuntu, Docker Engine, Containerlab 0.77. `make verify`
-(`scripts/verify-environment.sh`) checks all of this plus Python
-(PyYAML + Jinja2, used by the config generators), `ssh`/`setsid`, and
-(re)builds the `atlaslab/frr` image (frrouting/frr + lldpd + sshd, see
-[docs/atlas-integration.md](docs/atlas-integration.md)) every run.
-`make verify` also builds `atlaslab/firewall` and `atlaslab/switch`
-(used only by `07-multi-city`).
+`make inspect`). Routers drop into `vtysh`, firewalls into `fwsh`, and
+switches into `swsh` - all with `show` commands. See
+[docs/deployment.md](docs/deployment.md#ssh-management-access). (The
+credential is deliberately static and public: these labs live on a
+local Docker bridge on your own machine and are torn down constantly -
+don't expose the management network beyond the host.)
 
 ## Documentation
 
