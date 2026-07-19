@@ -195,6 +195,24 @@ scoped to a single exact invocation via `/etc/doas.conf`'s `args`
 clause, not a general privilege grant - there's no `sudo`, no root
 password, and no way to reach an unrestricted shell from this account.
 
+## Firewall web UI
+
+Every firewall also serves a **read-only status web page** on port 80
+of its management IP - `http://<fw-mgmt-ip>/` (IPs from `make
+inspect`). It shows the same live data as `fwsh`: interfaces, routing
+table, the FORWARD chain with live packet/byte counters, LLDP
+neighbors, and the startup log, auto-refreshing every 10 seconds.
+Implementation is deliberately small: busybox `httpd` plus one CGI
+script (`docker/firewall-atlaslab/webui.cgi`) baked into the image -
+no forms, no configuration surface, nothing writable over HTTP.
+
+From WSL/Linux it's directly reachable; from Windows it needs the same
+route as SSH does (see
+[docs/deployment.md](../../docs/deployment.md#reaching-the-lab-from-the-host-os)).
+It listens on all of the firewall's interfaces on purpose - probing it
+from another city over the WAN is a live demonstration of the iptables
+policy in action.
+
 ## Switch show-command CLI
 
 `ssh atlas@<sw-mgmt-ip>` drops into `swsh`

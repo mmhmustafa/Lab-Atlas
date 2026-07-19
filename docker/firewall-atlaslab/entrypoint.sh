@@ -58,4 +58,12 @@ ssh-keygen -A >>"$LOG" 2>&1
 /usr/sbin/sshd
 log "sshd started"
 
+# Read-only web UI (busybox httpd + /var/www/cgi-bin/status) - started
+# after setup.sh so the page never shows a half-configured firewall.
+# Listens on all interfaces deliberately: reaching it over the mgmt
+# network is the normal path, and probing it from another site over the
+# WAN doubles as a live demonstration of the iptables policy.
+httpd -p 80 -h /var/www
+log "web UI started on port 80"
+
 exec tail -F "$LOG"

@@ -16,7 +16,9 @@ FROM alpine:latest
 ARG ATLASLAB_SSH_USER=atlas
 ARG ATLASLAB_SSH_PASSWORD=AtlasLab123!
 
-RUN apk add --no-cache iproute2 iptables openssh shadow tini doas lldpd \
+# busybox-extras: provides the busybox httpd applet (not in Alpine's
+# base busybox) for the read-only web UI - see webui.cgi.
+RUN apk add --no-cache iproute2 iptables openssh shadow tini doas lldpd busybox-extras \
     && mkdir -p /var/run/sshd /run/sshd /var/log/atlaslab /etc/atlaslab-firewall \
     && adduser -D -s /usr/local/bin/fwsh "${ATLASLAB_SSH_USER}" \
     && echo "${ATLASLAB_SSH_USER}:${ATLASLAB_SSH_PASSWORD}" | chpasswd \
@@ -35,6 +37,10 @@ RUN chown root:root /etc/doas.conf && chmod 0644 /etc/doas.conf
 
 COPY fwsh /usr/local/bin/fwsh
 RUN chmod +x /usr/local/bin/fwsh
+
+COPY index.html /var/www/index.html
+COPY webui.cgi /var/www/cgi-bin/status
+RUN chmod +x /var/www/cgi-bin/status
 
 RUN ssh-keygen -A \
     && /usr/sbin/sshd -t \

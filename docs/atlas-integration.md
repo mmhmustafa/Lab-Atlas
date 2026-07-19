@@ -18,6 +18,7 @@ configured and why.
 | Redundant paths | `show ip route` (ECMP `*` markers), `show bgp` (`maximum-paths ibgp`) | Every layer boundary is dual-homed - see [docs/architecture.md](architecture.md) |
 | SSH management access | `ssh atlas@<mgmt-ip>` | Password `AtlasLab123!`, login shell is `vtysh` itself - see "SSH" below |
 | Firewall policy enforcement | Cross-site pings in `labs/07-multi-city` | Real iptables `FORWARD` chain, default-deny inbound - see [labs/07-multi-city/README.md](../labs/07-multi-city/README.md#firewall-policy) |
+| Firewall status over HTTP | `http://<fw-mgmt-ip>/` (07-multi-city) | Read-only web UI: interfaces, routes, live rule counters, LLDP, log - see [labs/07-multi-city/README.md](../labs/07-multi-city/README.md#firewall-web-ui) |
 | L2 switching | `ssh atlas@<switch-ip> "show mac-address-table"`, or `lldpcli show neighbors` on its peers | Real kernel bridge per switch, see [labs/07-multi-city/README.md](../labs/07-multi-city/README.md) |
 
 ## LLDP
